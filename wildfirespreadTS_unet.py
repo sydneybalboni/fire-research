@@ -194,7 +194,7 @@ def evaluate_model(model, val_sequences, val_labels):
     # Save metrics to file
     metrics_file = os.path.join(RESULTS_DIR, "metrics.txt")
     with open(metrics_file, 'w') as f:
-        f.write("Model Evaluation Metrics:\n")
+        f.write(f"Model Evaluation Metrics:\n")
         f.write(f"{'Metric':<20} {'Value':<10}\n")
         f.write("-" * 30 + "\n")
         f.write(f"{'Loss':<20} {val_loss:.4f}\n")
@@ -203,12 +203,7 @@ def evaluate_model(model, val_sequences, val_labels):
         f.write(f"{'Precision':<20} {precision:.4f}\n")
         f.write(f"{'Recall':<20} {recall:.4f}\n")
         f.write(f"{'F1 Score':<20} {f1:.4f}\n\n")
-        f.write("Confusion Matrix:\n")
-        f.write(f"{'':>10}{'Predicted':>20}\n")
-        f.write(f"{'Actual':>10}{'No Fire':>10}{'Fire':>10}\n")
-        f.write(f"{'No Fire':>10}{tn:>10.0f}{fp:>10.0f}\n")
-        f.write(f"{'Fire':>10}{fn:>10.0f}{tp:>10.0f}\n")
-    
+        
     return predictions_binary
 
 def plot_example_predictions(val_sequences, val_labels, predictions, num_examples=3):
@@ -285,21 +280,22 @@ def main():
         )
     ]
     
-    # Define a custom weighted loss function instead of using class_weight parameter
-    def weighted_loss(y_true, y_pred):
-        # Now combined_loss is accessible
-        base_loss = combined_loss(y_true, y_pred)
-        weights = tf.where(y_true > 0, pos_weight, 1.0)
-        return base_loss * weights
+    # Define a custom weighted loss function with closure over pos_weight
+    def make_weighted_loss(pos_weight_value):
+        def weighted_loss(y_true, y_pred):
+            base_loss = combined_loss(y_true, y_pred)
+            weights = tf.where(y_true > 0, tf.cast(pos_weight_value, tf.float32), 1.0)
+            return base_loss * weights
+        return weighted_loss
     
     # Compile model with weighted loss
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE, clipnorm=CLIPNORM),
-        loss=weighted_loss,
+        loss=make_weighted_loss(pos_weight),  # Create the loss function with pos_weight
         metrics=['accuracy', iou_metric]
     )
     
-    # Train model without class_weight parameter
+    # Train model
     history = model.fit(
         train_sequences,
         train_labels,
