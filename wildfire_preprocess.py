@@ -24,7 +24,6 @@ def load_tif(file_path):
         band_descriptions = src.descriptions
         
         # Log file information for debugging
-        print(f"\nProcessing file: {file_path}")
         
         for i in range(bands.shape[0]):
             band = bands[i]
@@ -34,9 +33,6 @@ def load_tif(file_path):
             nan_count = np.sum(np.isnan(band))
             total_pixels = band.size
             nan_percentage = (nan_count / total_pixels) * 100
-            
-            if nan_count > 0:
-                print(f"Band {band_name}: {nan_percentage:.2f}% NaN values ({nan_count}/{total_pixels})")
             
             # VIIRS Surface Reflectance (I1, I2, M11)
             if any(x in band_name.upper() for x in ['I1', 'I2', 'M11']):
@@ -52,15 +48,11 @@ def load_tif(file_path):
                                 prev_band = prev_src.read(i + 1)  # rasterio bands are 1-indexed
                                 if not np.all(np.isnan(prev_band)):
                                     band = prev_band
-                                    print(f"Successfully loaded previous day's data for {band_name}")
                                 else:
-                                    print(f"Previous day's {band_name} also contains all NaN values")
                                     band = np.zeros_like(band)
                         else:
-                            print(f"No previous day's data available for {band_name}")
                             band = np.zeros_like(band)
                     except Exception as e:
-                        print(f"Error loading previous day's data: {e}")
                         band = np.zeros_like(band)
                 
                 if np.any(np.isnan(band)):
@@ -155,7 +147,6 @@ def load_tif(file_path):
         
         # Final NaN check
         if np.any(np.isnan(bands)):
-            print("Warning: NaN values found after normalization!")
             bands = np.nan_to_num(bands, nan=0)
             
     return np.transpose(bands, (1, 2, 0))

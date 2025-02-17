@@ -136,12 +136,6 @@ def build_unet(input_shape):
         # Combine losses
         return tf.reduce_mean(focal) + iou_loss
     
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4, clipnorm=1.0),
-        loss=combined_loss,
-        metrics=['accuracy', iou_metric]
-    )
-    
     return model
 
 def iou_metric(y_true, y_pred):
@@ -261,7 +255,6 @@ def main():
     
     # Calculate class weights
     pos_weight = np.sum(train_labels == 0) / (np.sum(train_labels == 1) + 1e-6)
-    class_weight = {0: 1.0, 1: pos_weight}
     
     # Build model
     model = build_unet(INPUT_SHAPE)
@@ -292,14 +285,29 @@ def main():
         )
     ]
     
-    # Train model
+    # Define a custom weighted loss function instead of using class_weight parameter
+    def weighted_loss(y_true, y_pred):
+        # Get the base loss from combined_loss
+        base_loss = combined_loss(y_true, y_pred)
+        
+        # Apply weights manually
+        weights = tf.where(y_true > 0, pos_weight, 1.0)
+        return base_loss * weights
+    
+    # Compile model with weighted loss
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE, clipnorm=CLIPNORM),
+        loss=weighted_loss,
+        metrics=['accuracy', iou_metric]
+    )
+    
+    # Train model without class_weight parameter
     history = model.fit(
         train_sequences,
         train_labels,
         validation_data=(val_sequences, val_labels),
         epochs=EPOCHS,
         batch_size=BATCH_SIZE,
-        class_weight=class_weight,
         callbacks=callbacks,
         shuffle=True
     )
