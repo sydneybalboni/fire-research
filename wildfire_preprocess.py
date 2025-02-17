@@ -2,6 +2,8 @@ import numpy as np
 import rasterio
 from skimage.transform import resize
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+import os
+from datetime import datetime, timedelta
 
 # Fixed size for all images
 FIXED_SIZE = (300, 220)
@@ -21,20 +23,49 @@ def load_tif(file_path):
         normalized_bands = []
         band_descriptions = src.descriptions
         
+        # Log file information for debugging
+        print(f"\nProcessing file: {file_path}")
+        
         for i in range(bands.shape[0]):
             band = bands[i]
             band_name = band_descriptions[i] if band_descriptions else f"Band_{i}"
             
-            # Check if band is entirely NaN
-            if np.all(np.isnan(band)):
-                print(f"Warning: Band {band_name} is entirely NaN")
-                band = np.zeros_like(band)
+            # Detailed NaN analysis
+            nan_count = np.sum(np.isnan(band))
+            total_pixels = band.size
+            nan_percentage = (nan_count / total_pixels) * 100
+            
+            if nan_count > 0:
+                print(f"Band {band_name}: {nan_percentage:.2f}% NaN values ({nan_count}/{total_pixels})")
             
             # VIIRS Surface Reflectance (I1, I2, M11)
             if any(x in band_name.upper() for x in ['I1', 'I2', 'M11']):
+                if np.all(np.isnan(band)):
+                    print(f"Warning: Band {band_name} is entirely NaN. Using previous day's data if available.")
+                    # Try to load data from previous day's file
+                    try:
+                        date_str = os.path.basename(file_path).split('.')[0]  # Extract date from filename
+                        prev_date = (datetime.strptime(date_str, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+                        prev_file = os.path.join(os.path.dirname(file_path), f"{prev_date}.tif")
+                        
+                        if os.path.exists(prev_file):
+                            with rasterio.open(prev_file) as prev_src:
+                                prev_band = prev_src.read(i + 1)  # rasterio bands are 1-indexed
+                                if not np.all(np.isnan(prev_band)):
+                                    band = prev_band
+                                    print(f"Successfully loaded previous day's data for {band_name}")
+                                else:
+                                    print(f"Previous day's {band_name} also contains all NaN values")
+                                    band = np.zeros_like(band)
+                        else:
+                            print(f"No previous day's data available for {band_name}")
+                            band = np.zeros_like(band)
+                    except Exception as e:
+                        print(f"Error loading previous day's data: {e}")
+                        band = np.zeros_like(band)
+                
                 if np.any(np.isnan(band)):
                     median = np.nanmedian(band)
-                    # If median is NaN (all values are NaN), set to 0
                     median = 0 if np.isnan(median) else median
                     band = np.nan_to_num(band, nan=median)
                 
@@ -122,6 +153,12 @@ def load_tif(file_path):
         
         bands = np.stack(normalized_bands, axis=0)
         bands = resize(bands, (23, *FIXED_SIZE), mode='reflect', preserve_range=True)
+        
+        # Final NaN check
+        if np.any(np.isnan(bands)):
+            print("Warning: NaN values found after normalization!")
+            bands = np.nan_to_num(bands, nan=0)
+            
     return np.transpose(bands, (1, 2, 0))
 
 def create_sequences(file_paths, sequence_length=3):
