@@ -52,8 +52,97 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # ============= MODEL DEFINITION =============
 def build_unet(input_shape):
-    # Your existing build_unet function here
-    # ... (copy the entire function from your notebook)
+    inputs = tf.keras.Input(shape=input_shape)
+    
+    # Split inputs by feature groups for specialized processing
+    # Indices based on the dataset description
+    viirs_features = inputs[..., :3]  # VIIRS bands (I1, I2, M11)
+    weather_features = inputs[..., 3:13]  # GRIDMET features
+    forecast_features = inputs[..., 13:18]  # GFS features
+    static_features = inputs[..., 18:]  # Land cover, elevation, etc.
+    
+    # Encoder with separate paths for different feature types
+    def encoder_block(x, filters, name):
+        x = tf.keras.layers.Conv3D(filters, (3, 3, 3), activation='relu', padding='same', name=f'{name}_conv1')(x)
+        x = tf.keras.layers.BatchNormalization(name=f'{name}_bn1')(x)
+        x = tf.keras.layers.Conv3D(filters, (3, 3, 3), activation='relu', padding='same', name=f'{name}_conv2')(x)
+        x = tf.keras.layers.BatchNormalization(name=f'{name}_bn2')(x)
+        skip = x
+        x = tf.keras.layers.MaxPooling3D((1, 2, 2), name=f'{name}_pool')(x)
+        return x, skip
+    
+    # Process different feature groups
+    viirs_enc1, viirs_skip1 = encoder_block(viirs_features, 32, 'viirs1')
+    viirs_enc2, viirs_skip2 = encoder_block(viirs_enc1, 64, 'viirs2')
+    
+    weather_enc1, weather_skip1 = encoder_block(weather_features, 32, 'weather1')
+    weather_enc2, weather_skip2 = encoder_block(weather_enc1, 64, 'weather2')
+    
+    # Combine features
+    combined = tf.keras.layers.Concatenate()([viirs_enc2, weather_enc2])
+    
+    # Bridge
+    bridge = tf.keras.layers.Conv3D(128, (3, 3, 3), activation='relu', padding='same')(combined)
+    bridge = tf.keras.layers.BatchNormalization()(bridge)
+    bridge = tf.keras.layers.SpatialDropout3D(0.3)(bridge)  # Add dropout to prevent overfitting
+    
+    # Decoder with attention
+    def attention_block(x, skip_connection):
+        g1 = tf.keras.layers.Conv3D(x.shape[-1], (1, 1, 1))(skip_connection)
+        g1 = tf.keras.layers.BatchNormalization()(g1)
+        x1 = tf.keras.layers.Conv3D(x.shape[-1], (1, 1, 1))(x)
+        x1 = tf.keras.layers.BatchNormalization()(x1)
+        psi = tf.keras.layers.Activation('relu')(g1 + x1)
+        psi = tf.keras.layers.Conv3D(1, (1, 1, 1))(psi)
+        psi = tf.keras.layers.Activation('sigmoid')(psi)
+        return skip_connection * psi
+    
+    # Decoder
+    def decoder_block(x, skip, filters):
+        x = tf.keras.layers.Conv3DTranspose(filters, (3, 3, 3), strides=(1, 2, 2), padding='same')(x)
+        attention = attention_block(x, skip)
+        x = tf.keras.layers.Concatenate()([x, attention])
+        x = tf.keras.layers.Conv3D(filters, (3, 3, 3), activation='relu', padding='same')(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+        return x
+    
+    # Decoder path
+    dec1 = decoder_block(bridge, tf.keras.layers.Concatenate()([viirs_skip2, weather_skip2]), 64)
+    dec2 = decoder_block(dec1, tf.keras.layers.Concatenate()([viirs_skip1, weather_skip1]), 32)
+    
+    # Final convolution with class balancing
+    outputs = tf.keras.layers.Conv3D(1, (3, 1, 1), padding='valid')(dec2)
+    outputs = tf.keras.layers.Reshape((300, 220, 1))(outputs)
+    outputs = tf.keras.layers.Activation('sigmoid')(outputs)
+    
+    model = tf.keras.Model(inputs, outputs)
+    
+    # Custom weighted loss combining focal loss and IoU loss
+    def combined_loss(y_true, y_pred):
+        # Focal loss component
+        alpha = 0.75  # Give more weight to fire pixels since they're rare
+        gamma = 2.0
+        epsilon = tf.keras.backend.epsilon()
+        y_pred = tf.clip_by_value(y_pred, epsilon, 1 - epsilon)
+        focal = -alpha * y_true * tf.pow(1 - y_pred, gamma) * tf.math.log(y_pred) - \
+                (1 - alpha) * (1 - y_true) * tf.pow(y_pred, gamma) * tf.math.log(1 - y_pred)
+        
+        # IoU loss component
+        intersection = tf.reduce_sum(y_true * y_pred)
+        union = tf.reduce_sum(y_true) + tf.reduce_sum(y_pred) - intersection
+        iou = (intersection + epsilon) / (union + epsilon)
+        iou_loss = 1 - iou
+        
+        # Combine losses
+        return tf.reduce_mean(focal) + iou_loss
+    
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4, clipnorm=1.0),
+        loss=combined_loss,
+        metrics=['accuracy', iou_metric]
+    )
+    
+    return model
 
 def iou_metric(y_true, y_pred):
     # Your existing iou_metric function here
