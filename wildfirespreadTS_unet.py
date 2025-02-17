@@ -54,8 +54,8 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 # Move loss functions to module level (before any function definitions)
 def combined_loss(y_true, y_pred):
     # Focal loss component
-    alpha = 0.75  # Give more weight to fire pixels since they're rare
-    gamma = 2.0
+    FOCAL_ALPHA = 0.75  # Give more weight to fire pixels since they're rare
+    FOCAL_GAMMA = 2.0
     epsilon = tf.keras.backend.epsilon()
     y_pred = tf.clip_by_value(y_pred, epsilon, 1 - epsilon)
     focal = -alpha * y_true * tf.pow(1 - y_pred, gamma) * tf.math.log(y_pred) - \
