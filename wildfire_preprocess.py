@@ -41,7 +41,6 @@ def load_tif(file_path):
             # VIIRS Surface Reflectance (I1, I2, M11)
             if any(x in band_name.upper() for x in ['I1', 'I2', 'M11']):
                 if np.all(np.isnan(band)):
-                    print(f"Warning: Band {band_name} is entirely NaN. Using previous day's data if available.")
                     # Try to load data from previous day's file
                     try:
                         date_str = os.path.basename(file_path).split('.')[0]  # Extract date from filename
