@@ -47,8 +47,8 @@
 # Path to container
 container="/data/containers/msoe-tensorflow-20.07-tf2-py3.sif"
 
-# Install rasterio in the container
-singularity exec ${container} pip install --user rasterio
+# Install required packages in the container
+singularity exec ${container} pip install --user rasterio scikit-image
 
 # Command to run inside container
 command="python3 wildfirespreadTS_unet.py"
