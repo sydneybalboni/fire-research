@@ -51,6 +51,25 @@ MODEL_SAVE_NAME = "best_model.h5"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # ============= MODEL DEFINITION =============
+# Move loss functions to module level (before any function definitions)
+def combined_loss(y_true, y_pred):
+    # Focal loss component
+    alpha = 0.75  # Give more weight to fire pixels since they're rare
+    gamma = 2.0
+    epsilon = tf.keras.backend.epsilon()
+    y_pred = tf.clip_by_value(y_pred, epsilon, 1 - epsilon)
+    focal = -alpha * y_true * tf.pow(1 - y_pred, gamma) * tf.math.log(y_pred) - \
+            (1 - alpha) * (1 - y_true) * tf.pow(y_pred, gamma) * tf.math.log(1 - y_pred)
+    
+    # IoU loss component
+    intersection = tf.reduce_sum(y_true * y_pred)
+    union = tf.reduce_sum(y_true) + tf.reduce_sum(y_pred) - intersection
+    iou = (intersection + epsilon) / (union + epsilon)
+    iou_loss = 1 - iou
+    
+    # Combine losses
+    return tf.reduce_mean(focal) + iou_loss
+
 def build_unet(input_shape):
     inputs = tf.keras.Input(shape=input_shape)
     
@@ -116,25 +135,6 @@ def build_unet(input_shape):
     outputs = tf.keras.layers.Activation('sigmoid')(outputs)
     
     model = tf.keras.Model(inputs, outputs)
-    
-    # Custom weighted loss combining focal loss and IoU loss
-    def combined_loss(y_true, y_pred):
-        # Focal loss component
-        alpha = 0.75  # Give more weight to fire pixels since they're rare
-        gamma = 2.0
-        epsilon = tf.keras.backend.epsilon()
-        y_pred = tf.clip_by_value(y_pred, epsilon, 1 - epsilon)
-        focal = -alpha * y_true * tf.pow(1 - y_pred, gamma) * tf.math.log(y_pred) - \
-                (1 - alpha) * (1 - y_true) * tf.pow(y_pred, gamma) * tf.math.log(1 - y_pred)
-        
-        # IoU loss component
-        intersection = tf.reduce_sum(y_true * y_pred)
-        union = tf.reduce_sum(y_true) + tf.reduce_sum(y_pred) - intersection
-        iou = (intersection + epsilon) / (union + epsilon)
-        iou_loss = 1 - iou
-        
-        # Combine losses
-        return tf.reduce_mean(focal) + iou_loss
     
     return model
 
@@ -287,10 +287,8 @@ def main():
     
     # Define a custom weighted loss function instead of using class_weight parameter
     def weighted_loss(y_true, y_pred):
-        # Get the base loss from combined_loss
+        # Now combined_loss is accessible
         base_loss = combined_loss(y_true, y_pred)
-        
-        # Apply weights manually
         weights = tf.where(y_true > 0, pos_weight, 1.0)
         return base_loss * weights
     
