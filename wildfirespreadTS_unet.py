@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from datetime import datetime
 from wildfire_preprocess import create_sequences
+from tqdm import tqdm
 
 # ============= CONFIGURATION =============
 # Data parameters
@@ -230,28 +231,22 @@ def plot_example_predictions(val_sequences, val_labels, predictions, num_example
 
 # ============= MAIN TRAINING SCRIPT =============
 def main():
-    if DATASET_NAME == 'WildfireSpreadLS':
-        # Load and preprocess data for all years and fires
-        base_dir = "/data/ai_club/fire/WildfireSpreadLS"
-        file_paths = []
+    # Specify multiple fire directories
+    fire_directories = [
+        '2018/fire_21889697',
+        '2018/fire_21889681'
+    ]
+    
+    file_paths = []
+    base_dir = "/data/ai_club/fire/WildfireSpreadLS"
+    
+    # Iterate over each specified fire directory
+    for fire_name in fire_directories:
+        fire_path = os.path.join(base_dir, fire_name)
         
-        # Iterate over each year directory
-        for year in ['2018', '2019', '2020', '2021']:
-            year_dir = os.path.join(base_dir, year)
-            
-            # Iterate over each fire directory within the year
-            for fire_dir in os.listdir(year_dir):
-                fire_path = os.path.join(year_dir, fire_dir)
-                
-                # Collect all .tif files from the fire directory
-                fire_files = [os.path.join(fire_path, f) for f in os.listdir(fire_path) if f.endswith(".tif")]
-                file_paths.extend(fire_files)
-                
-    elif DATASET_NAME == '2018/fire_21889697':
-        DATA_DIR = f"/data/ai_club/fire/WildfireSpreadLS/{FIRE_NAME}"
-        file_paths = sorted([os.path.join(DATA_DIR, f) for f in os.listdir(DATA_DIR) if f.endswith(".tif")])
-    else:
-        raise ValueError(f"Invalid dataset name: {DATASET_NAME}")
+        # Collect all .tif files from the fire directory
+        fire_files = [os.path.join(fire_path, f) for f in os.listdir(fire_path) if f.endswith(".tif")]
+        file_paths.extend(fire_files)
 
     print(f"Total files found: {len(file_paths)}")
     
