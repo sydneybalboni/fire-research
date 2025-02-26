@@ -231,18 +231,13 @@ def plot_example_predictions(val_sequences, val_labels, predictions, num_example
 
 # ============= MAIN TRAINING SCRIPT =============
 def main():
-    # Specify multiple fire directories
-    fire_directories = [
-        '2018/fire_21889697',
-        '2018/fire_21889681'
-    ]
-    
+    # Set base directory to the 2018 directory
+    base_dir = "/data/ai_club/fire/WildfireSpreadLS/2018"
     file_paths = []
-    base_dir = "/data/ai_club/fire/WildfireSpreadLS"
     
-    # Iterate over each specified fire directory
-    for fire_name in fire_directories:
-        fire_path = os.path.join(base_dir, fire_name)
+    # Iterate over each fire directory within the 2018 directory
+    for fire_dir in os.listdir(base_dir):
+        fire_path = os.path.join(base_dir, fire_dir)
         
         # Collect all .tif files from the fire directory
         fire_files = [os.path.join(fire_path, f) for f in os.listdir(fire_path) if f.endswith(".tif")]
