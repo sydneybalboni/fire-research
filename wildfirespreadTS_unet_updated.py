@@ -94,7 +94,7 @@ lr_scheduler = tf.keras.callbacks.LearningRateScheduler(lambda epoch, lr: cosine
 # --------------------------
 from tensorflow.keras.mixed_precision import experimental as mixed_precision
 policy = mixed_precision.Policy('mixed_float16')
-tf.keras.mixed_precision.set_global_policy(policy)
+mixed_precision.set_policy(policy)
 
 # --------------------------
 # 🔥 6️⃣ Load & Train Model
