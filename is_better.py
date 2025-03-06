@@ -11,13 +11,13 @@ from tqdm import tqdm
 # ============= CONFIGURATION =============
 # Data parameters
 FIRE_NAME = '2018/fire_21889697'
-DATASET_NAME = 'WildfireSpreadLS' # WildfireSpreadLS or 2018/fire_21889697
+DATASET_NAME = '2018/fire_2188967' # WildfireSpreadLS or 2018/fire_21889697
 SEQUENCE_LENGTH = 3
 INPUT_SHAPE = (3, 300, 220, 23)
 
 # Training hyperparameters
 BATCH_SIZE = 8
-EPOCHS = 100
+EPOCHS = 10
 LEARNING_RATE = 1e-4
 CLIPNORM = 1.0
 VALIDATION_SPLIT = 0.2
