@@ -17,7 +17,7 @@
 
 # You _must_ specify the partition. Rosie's default is the 'teaching'
 # partition for interactive nodes.  Another option is the 'batch' partition.
-#SBATCH --partition=teaching
+#SBATCH --partition=dgx
 
 # The number of nodes to request
 #SBATCH --nodes=1
@@ -51,7 +51,7 @@ container="/data/containers/msoe-tensorflow-20.07-tf2-py3.sif"
 singularity exec ${container} pip install --user rasterio scikit-image
 
 # Command to run inside container
-command="python3 wildfirespreadTS_unet.py"
+command="python3 is_better.py"
 
 # Execute singularity container on node
 singularity exec --nv -B /data:/data ${container} /usr/local/bin/nvidia_entrypoint.sh ${command}
