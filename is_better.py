@@ -347,6 +347,7 @@ def main():
     )
     
     # Train model
+    print(f"Starting training, will save to {RESULTS_DIR}")
     history = model.fit(
         train_sequences,
         train_labels,
@@ -357,10 +358,12 @@ def main():
         shuffle=True
     )
     
+    print("Training complete, saving results...")
     # Plot and save results
     plot_training_history(history)
     predictions = evaluate_model(model, val_sequences, val_labels)
     plot_example_predictions(val_sequences, val_labels, predictions)
+    print(f"Results saved to {RESULTS_DIR}")
 
     
 if __name__ == "__main__":
