@@ -23,7 +23,7 @@
 #SBATCH --nodes=1
 
 # The number of GPUs to request
-#SBATCH --gpus=1
+#SBATCH --gpus=8
 
 # The number of CPUs to request per GPU
 #SBATCH --cpus-per-gpu=32
