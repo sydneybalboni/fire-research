@@ -17,7 +17,7 @@
 
 # You _must_ specify the partition. Rosie's default is the 'teaching'
 # partition for interactive nodes.  Another option is the 'batch' partition.
-#SBATCH --partition=teaching
+#SBATCH --partition=dgx
 
 # The number of nodes to request
 #SBATCH --nodes=1
