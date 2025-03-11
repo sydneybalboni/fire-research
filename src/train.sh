@@ -29,7 +29,7 @@
 #SBATCH --cpus-per-gpu=32
 
 # The error file to write to
-# #SBATCH --error='sbatcherrorfile.out'
+#SBATCH --error='sbatcherrorfile.out'
 
 # Kill the job if it takes longer than the specified time
 # format: <days>-<hours>:<minutes>
@@ -44,7 +44,8 @@
 #
 ####
 
-model = "models/firenet_3d.py"
+# The model to train
+model="models/firenet_3d.py"
 
 # Path to container
 container="/data/containers/msoe-tensorflow-20.07-tf2-py3.sif"
