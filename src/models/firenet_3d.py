@@ -9,9 +9,11 @@ from preprocess.wildfire_preprocess import create_sequences
 from tqdm import tqdm
 
 # ============= CONFIGURATION =============
+DEBUG=True # Enable if you want extra print statements for what it is doing in slurm.out file
+
 # Data parameters
-FIRE_NAME = '2018/fire_21889697'
-DATASET_NAME = 'WildfireSpreadLS' # WildfireSpreadLS or 2018/fire_21889697
+DATASET_NAME = 'WildfireSpreadLS'
+YEAR = "2018" # Specific year OR None or "" for all years
 SEQUENCE_LENGTH = 3
 INPUT_SHAPE = (3, 300, 220, 23)
 
@@ -42,11 +44,11 @@ EXPERIMENT_NAME = (
     f"_p{PATIENCE}"           # early stopping patience
     f"_v{VALIDATION_SPLIT:.1f}"  # validation split
 )
-RESULTS_DIR = f"results/run_{TIMESTAMP}_{EXPERIMENT_NAME}"
+RESULTS_DIR = f"../results/run_{TIMESTAMP}_{EXPERIMENT_NAME}"
 LOSS_PLOT_NAME = "loss_history.png"
 IOU_PLOT_NAME = "iou_history.png"
 PREDICTIONS_PLOT_NAME = "example_predictions.png"
-MODEL_SAVE_NAME = "best_model.h5"
+MODEL_SAVE_NAME = f"MODEL-{EXPERIMENT_NAME}.h5"
 
 # Create results directory
 os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -278,27 +280,63 @@ def plot_example_predictions(val_sequences, val_labels, predictions, num_example
 
 # ============= MAIN TRAINING SCRIPT =============
 def main():
-    # Set base directory to the 2018 directory
-    base_dir = "/data/ai_club/fire/WildfireSpreadLS/2018"
+    if DEBUG:
+        print("STARTING IN DEBUG MODE")
+
+    base_dir = f"/data/ai_club/fire/{DATASET_NAME}"
+
     file_paths = []
-    
-    # Iterate over each fire directory within the 2018 directory
-    for fire_dir in os.listdir(base_dir):
-        fire_path = os.path.join(base_dir, fire_dir)
-        
-        # Collect all .tif files from the fire directory
-        fire_files = [os.path.join(fire_path, f) for f in os.listdir(fire_path) if f.endswith(".tif")]
-        file_paths.extend(fire_files)
+
+    if DEBUG:
+        print("FINDING YEARS...")
+
+    # Determine which directories to process
+    if YEAR:
+        years_to_process = [YEAR]  # Only process the specified year
+    else:
+        years_to_process = [d for d in os.listdir(base_dir) if d.isdigit()]  # Get all year folders
+
+    if DEBUG:
+        print("YEARS FOUND: ", years_to_process)
+
+    # Iterate over each year and fire directory
+    for year_dir in years_to_process:
+        if DEBUG:
+            print("FINDING FIRES IN: ", year_dir)
+
+        year_path = os.path.join(base_dir, year_dir)
+
+        # Iterate over each fire directory within the year directory
+        for fire_dir in os.listdir(year_path):
+            fire_path = os.path.join(year_path, fire_dir)
+
+            # Collect all .tif files from the fire directory
+            fire_files = [os.path.join(fire_path, f) for f in os.listdir(fire_path) if f.endswith(".tif")]
+            file_paths.extend(fire_files)
+
+        if DEBUG:
+            print("FINISHED FINDING FIRES IN: ", year_dir)
 
     print(f"Total files found: {len(file_paths)}")
-    
+
+    if DEBUG:
+        print("FINISHED FINDING YEARS")
+        print("CREATING SEQUENCES...")
+
     # Create sequences
     train_sequences, train_labels = create_sequences(file_paths, sequence_length=SEQUENCE_LENGTH)
-    
+
+    if DEBUG:
+        print("FINISHED CREATING SEQUENCES")
+        print("SPLITTING DATA...")
+
     # Split data
     train_sequences, val_sequences, train_labels, val_labels = train_test_split(
         train_sequences, train_labels, test_size=VALIDATION_SPLIT, random_state=42
     )
+
+    if DEBUG:
+        print("FINISHED SPLITTING DATA")
     
     # Add channel dimension to labels
     train_labels = np.expand_dims(train_labels, axis=-1)
@@ -311,9 +349,16 @@ def main():
     num_neg = np.sum(train_labels == 0)
     pos_weight = (num_neg / (num_pos + 1e-7))
     print(f"Positive samples: {num_pos}, Negative samples: {num_neg}, pos_weight: {pos_weight:.2f}")
-    
+
+    if DEBUG:
+        print("BUILDING MODEL...")
+
     # Build model
     model = build_unet(INPUT_SHAPE)
+
+    if DEBUG:
+        print("FINISHED BUILDING MODEL")
+        print("DEFINING CALLBACKS...")
     
     # Define callbacks
     callbacks = [
@@ -338,6 +383,10 @@ def main():
         ),
         # REMOVED the LearningRateScheduler to avoid conflict with ReduceLROnPlateau
     ]
+
+    if DEBUG:
+        print("FINISHED DEFINING CALLBACKS")
+        print("COMPILING MODEL...")
     
     # Compile model with your combined loss (with pos weight)
     model.compile(
@@ -345,6 +394,9 @@ def main():
         loss=lambda y_true, y_pred: combined_loss_with_posweight(y_true, y_pred, pos_weight=pos_weight),
         metrics=['accuracy', iou_metric]
     )
+
+    if DEBUG:
+        print("FINISHED COMPILING MODEL")
     
     # Train model
     print(f"Starting training, will save to {RESULTS_DIR}")
