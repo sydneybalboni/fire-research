@@ -44,6 +44,8 @@
 #
 ####
 
+model = "models/firenet_3d.py"
+
 # Path to container
 container="/data/containers/msoe-tensorflow-20.07-tf2-py3.sif"
 
@@ -51,7 +53,7 @@ container="/data/containers/msoe-tensorflow-20.07-tf2-py3.sif"
 singularity exec ${container} pip install --user rasterio scikit-image
 
 # Command to run inside container
-command="python3 is_better.py"
+command="python3 ${model}"
 
 # Execute singularity container on node
 singularity exec --nv -B /data:/data ${container} /usr/local/bin/nvidia_entrypoint.sh ${command}
