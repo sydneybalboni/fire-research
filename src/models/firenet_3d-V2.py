@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from datetime import datetime
 from preprocess.wildfire_preprocess import create_sequences
+from tensorflow.keras.layers import GaussianNoise
 
 # ============= CONFIGURATION =============
 DEBUG=True # Enable if you want extra print statements for what it is doing in slurm.out file
@@ -100,17 +101,22 @@ def iou_metric(y_true, y_pred):
 def build_unet(input_shape):
     inputs = tf.keras.Input(shape=input_shape)
     
+    # Data augmentation
+    augmented = tf.keras.layers.experimental.preprocessing.RandomFlip("horizontal_and_vertical")(inputs)
+    augmented = tf.keras.layers.experimental.preprocessing.RandomRotation(0.2)(augmented)
+    augmented = GaussianNoise(0.1)(augmented)
+    
     # Split inputs by feature groups for specialized processing
     # Indices based on the dataset description
-    viirs_features    = inputs[..., :3]    # VIIRS bands (I1, I2, M11)
-    weather_features  = inputs[..., 3:13]  # GRIDMET features
-    forecast_features = inputs[..., 13:18] # GFS features
-    static_features   = inputs[..., 18:]   # Land cover, elevation, etc.
+    viirs_features    = augmented[..., :3]    # VIIRS bands (I1, I2, M11)
+    weather_features  = augmented[..., 3:13]  # GRIDMET features
+    forecast_features = augmented[..., 13:18] # GFS features
+    static_features   = augmented[..., 18:]   # Land cover, elevation, etc.
     
     def encoder_block(x, filters, name):
-        x = tf.keras.layers.Conv3D(filters, (3, 3, 3), activation='relu', padding='same', name=f'{name}_conv1')(x)
+        x = tf.keras.layers.Conv3D(filters, (3, 3, 3), activation='relu', padding='same', kernel_regularizer=tf.keras.regularizers.l2(1e-4), name=f'{name}_conv1')(x)
         x = tf.keras.layers.BatchNormalization(name=f'{name}_bn1')(x)
-        x = tf.keras.layers.Conv3D(filters, (3, 3, 3), activation='relu', padding='same', name=f'{name}_conv2')(x)
+        x = tf.keras.layers.Conv3D(filters, (3, 3, 3), activation='relu', padding='same', kernel_regularizer=tf.keras.regularizers.l2(1e-4), name=f'{name}_conv2')(x)
         x = tf.keras.layers.BatchNormalization(name=f'{name}_bn2')(x)
         skip = x
         x = tf.keras.layers.MaxPooling3D((1, 2, 2), name=f'{name}_pool')(x)
@@ -120,22 +126,26 @@ def build_unet(input_shape):
     # VIIRS
     viirs_enc1, viirs_skip1 = encoder_block(viirs_features, 32, 'viirs1')
     viirs_enc2, viirs_skip2 = encoder_block(viirs_enc1, 64, 'viirs2')
+    viirs_enc3, viirs_skip3 = encoder_block(viirs_enc2, 128, 'viirs3')
     
     # WEATHER
     weather_enc1, weather_skip1 = encoder_block(weather_features, 32, 'weather1')
     weather_enc2, weather_skip2 = encoder_block(weather_enc1, 64, 'weather2')
+    weather_enc3, weather_skip3 = encoder_block(weather_enc2, 128, 'weather3')
 
     # FORECAST
     forecast_enc1, forecast_skip1 = encoder_block(forecast_features, 32, 'forecast1')
     forecast_enc2, forecast_skip2 = encoder_block(forecast_enc1, 64, 'forecast2')
+    forecast_enc3, forecast_skip3 = encoder_block(forecast_enc2, 128, 'forecast3')
 
     # STATIC
     static_enc1, static_skip1 = encoder_block(static_features, 32, 'static1')
     static_enc2, static_skip2 = encoder_block(static_enc1, 64, 'static2')
+    static_enc3, static_skip3 = encoder_block(static_enc2, 128, 'static3')
     
     # Combine features from all 4 branches
     combined = tf.keras.layers.Concatenate()([
-        viirs_enc2, weather_enc2, forecast_enc2, static_enc2
+        viirs_enc3, weather_enc3, forecast_enc3, static_enc3
     ])
     
     # ---------------- BRIDGE ----------------
@@ -165,19 +175,24 @@ def build_unet(input_shape):
     
     # Decoder steps (matching how we combined in the encoder)
     dec1_input = tf.keras.layers.Concatenate()([
-        viirs_skip2, weather_skip2, forecast_skip2, static_skip2
+        viirs_skip3, weather_skip3, forecast_skip3, static_skip3
     ])
-    dec1 = decoder_block(bridge, dec1_input, 64)
+    dec1 = decoder_block(bridge, dec1_input, 128)
 
     dec2_input = tf.keras.layers.Concatenate()([
+        viirs_skip2, weather_skip2, forecast_skip2, static_skip2
+    ])
+    dec2 = decoder_block(dec1, dec2_input, 64)
+
+    dec3_input = tf.keras.layers.Concatenate()([
         viirs_skip1, weather_skip1, forecast_skip1, static_skip1
     ])
-    dec2 = decoder_block(dec1, dec2_input, 32)
+    dec3 = decoder_block(dec2, dec3_input, 32)
 
     # ---------------- OUTPUT LAYER ----------------
     # Use a 3D conv that reduces time dimension from 3->1 if 'valid' is used 
     # (since kernel_size=(3,1,1)), or keep 'same' if you want the same # of frames out.
-    outputs = tf.keras.layers.Conv3D(1, (3, 1, 1), padding='valid')(dec2)
+    outputs = tf.keras.layers.Conv3D(1, (3, 1, 1), padding='valid')(dec3)
     # flatten out the time dimension, shape: (batch, 1, 300, 220, 1) -> (batch, 300, 220, 1)
     outputs = tf.keras.layers.Reshape((300, 220, 1))(outputs)
     
